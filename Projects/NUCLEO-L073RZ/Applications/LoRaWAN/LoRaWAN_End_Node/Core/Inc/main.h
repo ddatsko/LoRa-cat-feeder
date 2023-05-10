@@ -88,6 +88,10 @@ void Error_Handler(void);
 #define USARTx_RX_GPIO_Port GPIOA
 #define USARTx_TX_Pin GPIO_PIN_2
 #define USARTx_TX_GPIO_Port GPIOA
+#define HX_DAT_Pin GPIO_PIN_6
+#define HX_DAT_GPIO_Port GPIOC
+#define HX_CLK_Pin GPIO_PIN_8
+#define HX_CLK_GPIO_Port GPIOC
 
 #define USARTx_RX_GPIO_CLK_ENABLE()      __HAL_RCC_GPIOA_CLK_ENABLE()
 #define USARTx_TX_GPIO_CLK_ENABLE()      __HAL_RCC_GPIOA_CLK_ENABLE()

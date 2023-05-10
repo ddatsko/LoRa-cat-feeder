@@ -56,6 +56,8 @@ void SystemClock_Config(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+
+
 /* USER CODE END 0 */
 
 /**
@@ -84,10 +86,13 @@ int main(void)
 
   /* USER CODE BEGIN SysInit */
 
+//  hx711_t loadcell;
+//  hx711_init(&loadcell, HX_CLK_GPIO_Port, HX_CLK_Pin, HX_DAT_GPIO_Port, HX_DAT_Pin);
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_LoRaWAN_Init();
+
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -100,6 +105,7 @@ int main(void)
     MX_LoRaWAN_Process();
 
     /* USER CODE BEGIN 3 */
+
   }
   /* USER CODE END 3 */
 }

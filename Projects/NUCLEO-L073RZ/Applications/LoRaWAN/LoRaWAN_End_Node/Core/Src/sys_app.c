@@ -32,6 +32,7 @@
 #include "sys_debug.h"
 #include "rtc_if.h"
 #include "sys_sensors.h"
+#include <stdint.h>
 
 /* USER CODE BEGIN Includes */
 
@@ -55,6 +56,15 @@
   */
 #define LORAWAN_MAX_BAT   254
 /* USER CODE BEGIN PD */
+
+#define HX_DAT_Pin GPIO_PIN_6
+#define HX_DAT_GPIO_Port GPIOC
+#define HX_CLK_Pin GPIO_PIN_8
+#define HX_CLK_GPIO_Port GPIOC
+#define   _HX711_DELAY_US_LOOP  1
+
+#define LOAD_CELL_OFFSET 8257050
+#define LOAD_CELL_COEF -2027.39
 
 /* USER CODE END PD */
 
@@ -89,12 +99,102 @@ static void tiny_snprintf_like(char *buf, uint32_t maxsize, const char *strForma
 
 /* USER CODE BEGIN PFP */
 
+
+static void hx711_delay_us(void)
+{
+  uint32_t delay = _HX711_DELAY_US_LOOP;
+  while (delay > 0)
+  {
+    delay--;
+    asm("NOP"); asm("NOP"); asm("NOP"); asm("NOP");
+  }
+}
+
+
+static int32_t hx711_value()
+{
+  uint32_t data = 0;
+  uint32_t  startTime = HAL_GetTick();
+  while(HAL_GPIO_ReadPin(HX_DAT_GPIO_Port, HX_DAT_Pin) == GPIO_PIN_SET)
+  {
+    HAL_Delay(1);
+    if(HAL_GetTick() - startTime > 150)
+      return 0;
+  }
+  for(int8_t i=0; i<24 ; i++)
+  {
+    HAL_GPIO_WritePin(HX_CLK_GPIO_Port, HX_CLK_Pin, GPIO_PIN_SET);
+    hx711_delay_us();
+    HAL_GPIO_WritePin(HX_CLK_GPIO_Port, HX_CLK_Pin, GPIO_PIN_RESET);
+    hx711_delay_us();
+    data = data << 1;
+    if(HAL_GPIO_ReadPin(HX_DAT_GPIO_Port, HX_DAT_Pin) == GPIO_PIN_SET)
+      data ++;
+  }
+  data = data ^ 0x800000;
+  HAL_GPIO_WritePin(HX_CLK_GPIO_Port, HX_CLK_Pin, GPIO_PIN_SET);
+  hx711_delay_us();
+  HAL_GPIO_WritePin(HX_CLK_GPIO_Port, HX_CLK_Pin, GPIO_PIN_RESET);
+  hx711_delay_us();
+
+  return data;
+}
+
+int32_t hx711_value_ave(uint16_t sample)
+{
+  int64_t  ave = 0;
+  for(uint16_t i=0 ; i<sample ; i++)
+  {
+    ave += hx711_value();
+    HAL_Delay(5);
+  }
+  int32_t answer = (int32_t)(ave / sample);
+  return answer;
+}
+
+float hx711_weight(uint16_t sample)
+{
+  int64_t  ave = 0;
+  for(uint16_t i=0 ; i<sample ; i++)
+  {
+    ave += hx711_value();
+    HAL_Delay(5);
+  }
+  int32_t data = (int32_t)(ave / sample);
+  float answer = (data - LOAD_CELL_OFFSET) / LOAD_CELL_COEF;
+  return answer;
+}
+
+
+static void hx711_init() {
+	  GPIO_InitTypeDef gpio = {0};
+	  gpio.Mode = GPIO_MODE_OUTPUT_PP;
+	  gpio.Pull = GPIO_NOPULL;
+	  gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+	  gpio.Pin = HX_CLK_Pin;
+	  HAL_GPIO_Init(HX_CLK_GPIO_Port, &gpio);
+	  gpio.Mode = GPIO_MODE_INPUT;
+	  gpio.Pull = GPIO_PULLUP;
+	  gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+	  gpio.Pin = HX_DAT_Pin;
+	  HAL_GPIO_Init(HX_DAT_GPIO_Port, &gpio);
+
+	  HAL_GPIO_WritePin(HX_CLK_GPIO_Port, HX_CLK_Pin, GPIO_PIN_SET);
+	  HAL_Delay(10);
+	  HAL_GPIO_WritePin(HX_CLK_GPIO_Port, HX_CLK_Pin, GPIO_PIN_RESET);
+	  HAL_Delay(10);
+	  hx711_value();
+	  hx711_value();
+}
+
+
 /* USER CODE END PFP */
 
 /* Exported functions ---------------------------------------------------------*/
 void SystemApp_Init(void)
 {
   /* USER CODE BEGIN SystemApp_Init_1 */
+
 
   /* USER CODE END SystemApp_Init_1 */
 
@@ -139,6 +239,8 @@ void SystemApp_Init(void)
 #endif /* LOW_POWER_DISABLE */
 
   /* USER CODE BEGIN SystemApp_Init_2 */
+
+  hx711_init();
 
   /* USER CODE END SystemApp_Init_2 */
 }
@@ -233,10 +335,8 @@ uint32_t GetDevAddr(void)
 
 uint32_t GetBowlWeight(void)
 {
-	// TODO OWN: implement measurements reading or taking from some stored value in this function. For now, return always a bigger value
-	static uint32_t val = 0;
-	val += 50;
-	return val;
+	float weight = hx711_weight(5);
+	return (uint32_t)(weight > 0 ? weight : 0);
 }
 
 
