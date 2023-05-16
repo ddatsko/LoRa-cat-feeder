@@ -55,6 +55,7 @@
 #include "LoRaMacAdr.h"
 #include "LoRaMacSerializer.h"
 #include "radio.h"
+#include "sys_app.h"
 
 #include "LoRaMac.h"
 #include "mw_log_conf.h"
@@ -687,6 +688,7 @@ static void OnRadioTxDone( void )
     {
         MacCtx.MacCallbacks->MacProcessNotify( );
     }
+    reset_feeding_status();
     MW_LOG(TS_ON, VLEVEL_M, "MAC txDone\r\n" );
 }
 

@@ -33,6 +33,8 @@
 #include "rtc_if.h"
 #include "sys_sensors.h"
 #include <stdint.h>
+#include "stm32l0xx_hal.h"
+#include <stdbool.h>
 
 /* USER CODE BEGIN Includes */
 
@@ -63,8 +65,12 @@
 #define HX_CLK_GPIO_Port GPIOC
 #define   _HX711_DELAY_US_LOOP  1
 
-#define LOAD_CELL_OFFSET 8257050
-#define LOAD_CELL_COEF -2027.39
+#define LOAD_CELL_OFFSET 8731395
+#define LOAD_CELL_COEF 2204.03
+
+#define FEEDING_TICKS 200
+
+#define MIN_FEEDING_WEIGHT 20
 
 /* USER CODE END PD */
 
@@ -75,6 +81,14 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
+
+TIM_HandleTypeDef htim2;
+static uint32_t start_feeding_tick;
+static uint32_t end_feeding_tick;
+static uint32_t start_feeding_weight = 0;
+static uint32_t end_feeding_weight = 0;
+static bool in_feeding = false;
+static uint8_t feeding_status = 0;
 
 /* USER CODE END PV */
 
@@ -188,6 +202,173 @@ static void hx711_init() {
 }
 
 
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+	__HAL_RCC_TIM2_CLK_ENABLE();
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 16;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 40000;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+	  APP_LOG(TS_ON, VLEVEL_L, "Error in config clock source\r\n");
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
+  {
+	  APP_LOG(TS_ON, VLEVEL_L, "Error in PWM init\r\n");
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+	  APP_LOG(TS_ON, VLEVEL_L, "Error in synchronization\r\n");
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+	  APP_LOG(TS_ON, VLEVEL_L, "Error in config channel\r\n");
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  /**TIM2 GPIO Configuration
+  PA0     ------> TIM2_CH1
+  */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF2_TIM2;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+//  HAL_TIM_MspPostInit(&htim2);
+}
+
+
+static void MX_TIM2_ReInit(void)
+{
+
+//	__HAL_RCC_TIM2_CLK_ENABLE();
+
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  /**TIM2 GPIO Configuration
+  PA0     ------> TIM2_CH1
+  */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF2_TIM2;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /* USER CODE END TIM2_Init 2 */
+
+//  HAL_TIM_MspPostInit(&htim2);
+}
+
+
+void close_food_source() {
+	APP_LOG(TS_ON, VLEVEL_L, "CLosing\r\n");
+
+	MX_TIM2_ReInit();
+	htim2.Instance->CCR1 = 2650;
+	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+	HAL_Delay(200);
+}
+
+void open_food_source() {
+
+	APP_LOG(TS_ON, VLEVEL_L, "Opening\r\n");
+	MX_TIM2_ReInit();
+	htim2.Instance->CCR1 = 1000;
+	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+	HAL_Delay(200);
+}
+
+
+void start_feeding() {
+	in_feeding = true;
+	start_feeding_weight = GetBowlWeight();
+	start_feeding_tick = HAL_GetTick();
+	end_feeding_tick = start_feeding_tick + FEEDING_TICKS;
+	open_food_source();
+}
+
+void check_feeding_loop() {
+	uint32_t current_tick = HAL_GetTick();
+	if (!in_feeding) {
+		return;
+	}
+	bool end_feeding = false;
+	// If no overflow in start_feeding_tick + FEEDING_TICKS
+			// TODO: rewrite these ugly ifs
+	if (start_feeding_tick < end_feeding_tick) {
+		if (current_tick < start_feeding_tick || current_tick > end_feeding_tick) {
+			end_feeding = true;
+		}
+	} else {
+		if (current_tick < start_feeding_tick && current_tick > end_feeding_tick) {
+			end_feeding = true;
+		}
+	}
+
+	if (end_feeding) {
+		in_feeding = false;
+		close_food_source();
+		uint32_t end_feeding_weight = GetBowlWeight();
+		if ((int32_t)end_feeding_weight - (int32_t)start_feeding_weight < MIN_FEEDING_WEIGHT) {
+			feeding_status = 1;
+		}
+	}
+
+}
+
+bool get_last_feeding_status() {
+	return feeding_status;
+}
+
+void reset_feeding_status() {
+	feeding_status = 0;
+}
+
+
+
+
 /* USER CODE END PFP */
 
 /* Exported functions ---------------------------------------------------------*/
@@ -241,9 +422,13 @@ void SystemApp_Init(void)
   /* USER CODE BEGIN SystemApp_Init_2 */
 
   hx711_init();
+  MX_TIM2_Init();
+
 
   /* USER CODE END SystemApp_Init_2 */
 }
+
+
 
 /**
   * @brief redefines __weak function in stm32_seq.c such to enter low power
@@ -336,6 +521,9 @@ uint32_t GetDevAddr(void)
 uint32_t GetBowlWeight(void)
 {
 	float weight = hx711_weight(5);
+	char buf[100];
+	sprintf(buf, "Current measurement: %ld \r\n", (long long)(weight));
+	APP_LOG(TS_ON, VLEVEL_L, buf);;
 	return (uint32_t)(weight > 0 ? weight : 0);
 }
 
@@ -386,8 +574,9 @@ static void Gpio_PreInit(void)
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
   HAL_GPIO_Init(GPIOH, &GPIO_InitStruct);
 
+
   /* Disable GPIOs clock */
-  __HAL_RCC_GPIOA_CLK_DISABLE();
+//  __HAL_RCC_GPIOA_CLK_DISABLE();
   __HAL_RCC_GPIOB_CLK_DISABLE();
   __HAL_RCC_GPIOC_CLK_DISABLE();
   __HAL_RCC_GPIOH_CLK_DISABLE();

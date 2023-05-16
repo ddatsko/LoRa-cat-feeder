@@ -31,6 +31,7 @@ extern "C" {
 #include "stdint.h"
 #include "sys_conf.h"
 #include "stm32_adv_trace.h"
+#include <stdbool.h>
 /* USER CODE BEGIN Includes */
 
 /* USER CODE END Includes */
@@ -111,6 +112,13 @@ uint32_t GetDevAddr(void);
 /* USER CODE BEGIN EFP */
 
 uint32_t GetBowlWeight(void);
+
+void open_food_source();
+void close_food_source();
+void start_feeding();
+void check_feeding_loop();
+bool get_last_feeding_status();
+void reset_feeding_status();
 
 /* USER CODE END EFP */
 

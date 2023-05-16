@@ -357,22 +357,7 @@ static void OnRxData(LmHandlerAppData_t *appData, LmHandlerRxParams_t *params)
     	if (appData->BufferSize >= 4) {
     	  APP_LOG(TS_OFF, VLEVEL_M, "First 4 bytes: %X, %X, %X, %X \r\n", appData->Buffer[0], appData->Buffer[1], appData->Buffer[2], appData->Buffer[3]);
     	}
-        if (appData->BufferSize == 1)
-        {
-          AppLedStateOn = appData->Buffer[0] & 0x01;
-          if (AppLedStateOn == RESET)
-          {
-            APP_LOG(TS_OFF, VLEVEL_H,   "LED OFF\r\n");
-
-            LED_Off(LED_RED1);
-          }
-          else
-          {
-            APP_LOG(TS_OFF, VLEVEL_H, "LED ON\r\n");
-
-            LED_On(LED_RED1);
-          }
-        }
+    	start_feeding();
         break;
 
       default:
@@ -404,6 +389,7 @@ static void SendTxData(void)
     AppData.Buffer[i++] = (uint8_t)((bowl_weight >> 16) & 0xFF);
     AppData.Buffer[i++] = (uint8_t)((bowl_weight >> 8) & 0xFF);
     AppData.Buffer[i++] = (uint8_t)(bowl_weight & 0xFF);
+    AppData.Buffer[i++] = (uint8_t)get_last_feeding_status();
 
   // Nothing else is put here as no sensors are used anymore
 
@@ -417,6 +403,15 @@ static void SendTxData(void)
   {
     APP_LOG(TS_ON, VLEVEL_L, "Next Tx in  : ~%d second(s)\r\n", (nextTxIn / 1000));
   }
+
+//  static int rotation = 0;
+//  if (rotation == 0) {
+//	  rotate_servo_left();
+//	  rotation = 1;
+//  } else {
+//	  rotate_servo_right();
+//	  rotation = 0;
+//  }
 
   /* USER CODE END SendTxData_1 */
 }
